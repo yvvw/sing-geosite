@@ -10,24 +10,19 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Setup Go
-        uses: actions/setup-go@v4
+      - uses: actions/setup-go@v4
         with:
           go-version: 'stable'
 
-      - name: Build geosite
-        id: build
+      - id: build
         run: go run -v .
 
-      - name: Generate sha256 hash
-        if: steps.build.outputs.skip != 'true'
+      - if: steps.build.outputs.skip != 'true'
         run: sha256sum geosite.db > geosite.db.sha256sum
 
-      - name: Release
-        if: steps.build.outputs.skip != 'true'
+      - if: steps.build.outputs.skip != 'true'
         uses: softprops/action-gh-release@v1
         with:
           name: ${{ steps.build.outputs.tag }}
