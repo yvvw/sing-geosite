@@ -1,8 +1,10 @@
 name: Release
+
 on:
   workflow_dispatch:
   schedule:
     - cron: "30 22 * * *"
+
 jobs:
   build:
     name: Build
@@ -10,46 +12,26 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
+
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
           go-version: 'stable'
+
       - name: Build geosite
         id: build
-        run: |
-          go run -v .
+        run: go run -v .
+
       - name: Generate sha256 hash
         if: steps.build.outputs.skip != 'true'
-        run: |
-          sha256sum geosite.db > geosite.db.sha256sum
-      - name: Create a release
+        run: sha256sum geosite.db > geosite.db.sha256sum
+
+      - name: Release
         if: steps.build.outputs.skip != 'true'
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v1
         with:
+          name: ${{ steps.build.outputs.tag }}
           tag_name: ${{ steps.build.outputs.tag }}
-          release_name: ${{ steps.build.outputs.tag }}
-          draft: false
-          prerelease: false
-      - name: Release geosite.db
-        if: steps.build.outputs.skip != 'true'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./geosite.db
-          asset_name: geosite.db
-          asset_content_type: application/octet-stream
-      - name: Release geosite.db sha256sum
-        if: steps.build.outputs.skip != 'true'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./geosite.db.sha256sum
-          asset_name: geosite.db.sha256sum
-          asset_content_type: text/plain
+          files: |
+            geosite.db
+            geosite.db.sha256sum
