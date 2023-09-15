@@ -1,3 +1,2 @@
-/.idea/
-/vendor/
-/geosite.db
+.idea/
+geosite.db

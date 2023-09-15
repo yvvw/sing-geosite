@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/google/go-github/v45/github"
@@ -33,7 +32,11 @@ func init() {
 	githubClient = github.NewClient(transport.Client())
 }
 
-func fetch(from string) (*github.RepositoryRelease, error) {
+func setActionOutput(name string, content string) {
+	os.Stdout.WriteString("::set-output name=" + name + "::" + content + "\n")
+}
+
+func getLatestRelease(from string) (*github.RepositoryRelease, error) {
 	names := strings.SplitN(from, "/", 2)
 	latestRelease, _, err := githubClient.Repositories.GetLatestRelease(context.Background(), names[0], names[1])
 	if err != nil {
@@ -42,9 +45,9 @@ func fetch(from string) (*github.RepositoryRelease, error) {
 	return latestRelease, err
 }
 
-func get(downloadURL *string) ([]byte, error) {
-	logrus.Info("download ", *downloadURL)
-	response, err := http.Get(*downloadURL)
+func download(url *string) ([]byte, error) {
+	logrus.Info("download ", *url)
+	response, err := http.Get(*url)
 	if err != nil {
 		return nil, err
 	}
@@ -52,24 +55,24 @@ func get(downloadURL *string) ([]byte, error) {
 	return io.ReadAll(response.Body)
 }
 
-func download(release *github.RepositoryRelease) ([]byte, error) {
+func downloadGeoSite(release *github.RepositoryRelease) ([]byte, error) {
 	geositeAsset := common.Find(release.Assets, func(it *github.ReleaseAsset) bool {
 		return *it.Name == "geosite.dat"
 	})
+	if geositeAsset == nil {
+		return nil, E.New("geosite.dat not found in upstream release ", release.Name)
+	}
 	geositeChecksumAsset := common.Find(release.Assets, func(it *github.ReleaseAsset) bool {
 		return *it.Name == "geosite.dat.sha256sum"
 	})
-	if geositeAsset == nil {
-		return nil, E.New("geosite asset not found in upstream release ", release.Name)
-	}
 	if geositeChecksumAsset == nil {
-		return nil, E.New("geosite asset not found in upstream release ", release.Name)
+		return nil, E.New("geosite.dat.sha256sum not found in upstream release ", release.Name)
 	}
-	data, err := get(geositeAsset.BrowserDownloadURL)
+	data, err := download(geositeAsset.BrowserDownloadURL)
 	if err != nil {
 		return nil, err
 	}
-	remoteChecksum, err := get(geositeChecksumAsset.BrowserDownloadURL)
+	remoteChecksum, err := download(geositeChecksumAsset.BrowserDownloadURL)
 	if err != nil {
 		return nil, err
 	}
@@ -89,10 +92,6 @@ func parse(vGeositeData []byte) (map[string][]geosite.Item, error) {
 	domainMap := make(map[string][]geosite.Item)
 	for _, vGeositeEntry := range vGeositeList.Entry {
 		code := strings.ToLower(vGeositeEntry.CountryCode)
-		// custom filter reduce size
-		if code != "cn" && code != "private" && code != "category-ads-all" {
-			continue
-		}
 		domains := make([]geosite.Item, 0, len(vGeositeEntry.Domain)*2)
 		attributes := make(map[string][]*routercommon.Domain)
 		for _, domain := range vGeositeEntry.Domain {
@@ -169,35 +168,29 @@ func parse(vGeositeData []byte) (map[string][]geosite.Item, error) {
 	return domainMap, nil
 }
 
-func generate(release *github.RepositoryRelease, output string) error {
+func generateGeoSite(release *github.RepositoryRelease, output string) error {
+	vData, err := downloadGeoSite(release)
+	if err != nil {
+		return err
+	}
 	outputFile, err := os.Create(output)
 	if err != nil {
 		return err
 	}
 	defer outputFile.Close()
-	vData, err := download(release)
-	if err != nil {
-		return err
-	}
 	domainMap, err := parse(vData)
 	if err != nil {
 		return err
 	}
-	outputPath, _ := filepath.Abs(output)
-	os.Stderr.WriteString("write " + outputPath + "\n")
 	return geosite.Write(outputFile, domainMap)
 }
 
-func setActionOutput(name string, content string) {
-	os.Stdout.WriteString("::set-output name=" + name + "::" + content + "\n")
-}
-
 func release(source string, destination string, output string) error {
-	sourceRelease, err := fetch(source)
+	sourceRelease, err := getLatestRelease(source)
 	if err != nil {
 		return err
 	}
-	destinationRelease, err := fetch(destination)
+	destinationRelease, err := getLatestRelease(destination)
 	if err != nil {
 		logrus.Warn("missing destination latest release")
 	} else {
@@ -207,7 +200,7 @@ func release(source string, destination string, output string) error {
 			return nil
 		}
 	}
-	err = generate(sourceRelease, output)
+	err = generateGeoSite(sourceRelease, output)
 	if err != nil {
 		return err
 	}
