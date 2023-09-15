@@ -55,7 +55,7 @@ func download(url *string) ([]byte, error) {
 	return io.ReadAll(response.Body)
 }
 
-func downloadGeosite(release *github.RepositoryRelease, fileName string) ([]byte, error) {
+func downloadGeoSite(release *github.RepositoryRelease, fileName string) ([]byte, error) {
 	geositeAsset := common.Find(release.Assets, func(it *github.ReleaseAsset) bool {
 		return *it.Name == fileName
 	})
@@ -169,7 +169,7 @@ func parse(vGeositeData []byte) (map[string][]geosite.Item, error) {
 }
 
 func generateGeoSite(release *github.RepositoryRelease, inputFileName string, outputFileName string) error {
-	vData, err := downloadGeosite(release, inputFileName)
+	vData, err := downloadGeoSite(release, inputFileName)
 	if err != nil {
 		return err
 	}
