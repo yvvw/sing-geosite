@@ -55,18 +55,18 @@ func download(url *string) ([]byte, error) {
 	return io.ReadAll(response.Body)
 }
 
-func downloadGeoSite(release *github.RepositoryRelease) ([]byte, error) {
+func downloadGeosite(release *github.RepositoryRelease, fileName string) ([]byte, error) {
 	geositeAsset := common.Find(release.Assets, func(it *github.ReleaseAsset) bool {
-		return *it.Name == "geosite.dat"
+		return *it.Name == fileName
 	})
 	if geositeAsset == nil {
-		return nil, E.New("geosite.dat not found in upstream release ", release.Name)
+		return nil, E.New(fileName+" not found in upstream release ", release.Name)
 	}
 	geositeChecksumAsset := common.Find(release.Assets, func(it *github.ReleaseAsset) bool {
-		return *it.Name == "geosite.dat.sha256sum"
+		return *it.Name == fileName+".sha256sum"
 	})
 	if geositeChecksumAsset == nil {
-		return nil, E.New("geosite.dat.sha256sum not found in upstream release ", release.Name)
+		return nil, E.New(fileName+".sha256sum not found in upstream release ", release.Name)
 	}
 	data, err := download(geositeAsset.BrowserDownloadURL)
 	if err != nil {
@@ -168,12 +168,12 @@ func parse(vGeositeData []byte) (map[string][]geosite.Item, error) {
 	return domainMap, nil
 }
 
-func generateGeoSite(release *github.RepositoryRelease, output string) error {
-	vData, err := downloadGeoSite(release)
+func generateGeoSite(release *github.RepositoryRelease, inputFileName string, outputFileName string) error {
+	vData, err := downloadGeosite(release, inputFileName)
 	if err != nil {
 		return err
 	}
-	outputFile, err := os.Create(output)
+	outputFile, err := os.Create(outputFileName)
 	if err != nil {
 		return err
 	}
@@ -185,33 +185,44 @@ func generateGeoSite(release *github.RepositoryRelease, output string) error {
 	return geosite.Write(outputFile, domainMap)
 }
 
-func release(source string, destination string, output string) error {
-	sourceRelease, err := getLatestRelease(source)
+func main() {
+	fullSource := "Loyalsoldier/v2ray-rules-dat"
+	fullInput := "geosite.dat"
+	fullOutput := "geosite-full.db"
+
+	liteSource := "v2fly/domain-list-community"
+	liteInput := "dlc.dat"
+	liteOutput := "geosite-lite.db"
+
+	destination := "yvvw/sing-geosite"
+
+	fullSourceRelease, err := getLatestRelease(fullSource)
 	if err != nil {
-		return err
+		logrus.Fatal(err)
+	}
+	liteSourceRelease, err := getLatestRelease(liteSource)
+	if err != nil {
+		logrus.Fatal(err)
 	}
 	destinationRelease, err := getLatestRelease(destination)
 	if err != nil {
 		logrus.Warn("missing destination latest release")
 	} else {
-		if os.Getenv("NO_SKIP") != "true" && strings.Contains(*destinationRelease.Name, *sourceRelease.Name) {
+		if os.Getenv("NO_SKIP") != "true" && strings.Contains(*destinationRelease.Name, *fullSourceRelease.Name) {
 			logrus.Info("already latest")
 			setActionOutput("skip", "true")
-			return nil
+			return
 		}
 	}
-	err = generateGeoSite(sourceRelease, output)
-	if err != nil {
-		return err
-	}
-	tagName := *sourceRelease.Name
-	setActionOutput("tag", tagName[12:])
-	return nil
-}
 
-func main() {
-	err := release("Loyalsoldier/v2ray-rules-dat", "yvvw/sing-geosite", "geosite.db")
+	err = generateGeoSite(fullSourceRelease, fullInput, fullOutput)
 	if err != nil {
 		logrus.Fatal(err)
 	}
+	err = generateGeoSite(liteSourceRelease, liteInput, liteOutput)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	tagName := *fullSourceRelease.Name
+	setActionOutput("tag", tagName[12:])
 }

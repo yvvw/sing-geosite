@@ -3,7 +3,7 @@ name: Release
 on:
   workflow_dispatch:
   schedule:
-    - cron: "30 22 * * *"
+    - cron: "0 16 * * *"
 
 jobs:
   release:
@@ -24,7 +24,9 @@ jobs:
 
       - name: Checksum
         if: steps.build.outputs.skip != 'true'
-        run: sha256sum geosite.db > geosite.db.sha256sum
+        run: |
+          sha256sum geosite-full.db > geosite-full.db.sha256sum
+          sha256sum geosite-lite.db > geosite-lite.db.sha256sum
 
       - name: Release
         if: steps.build.outputs.skip != 'true'
@@ -33,5 +35,7 @@ jobs:
           name: ${{ steps.build.outputs.tag }}
           tag_name: ${{ steps.build.outputs.tag }}
           files: |
-            geosite.db
-            geosite.db.sha256sum
+            geosite-full.db
+            geosite-full.db.sha256sum
+            geosite-lite.db
+            geosite-lite.db.sha256sum
