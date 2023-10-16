@@ -37,5 +37,7 @@ jobs:
           files: |
             geosite-full.db
             geosite-full.db.sha256sum
+            geosite-full.txt
             geosite-lite.db
             geosite-lite.db.sha256sum
+            geosite-lite.txt

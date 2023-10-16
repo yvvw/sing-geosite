@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/google/go-github/v45/github"
@@ -172,20 +173,46 @@ func parse(vGeositeData []byte) (map[string][]geosite.Item, error) {
 	return domainMap, nil
 }
 
-func generateGeoSite(release *github.RepositoryRelease, inputFileName string, outputFileName string) error {
-	vData, err := downloadGeoSite(release, inputFileName)
-	if err != nil {
-		return err
-	}
+func generateDomainList(domainMap map[string][]geosite.Item, outputFileName string) error {
 	outputFile, err := os.Create(outputFileName)
 	if err != nil {
 		return err
 	}
 	defer outputFile.Close()
+
+	var list []string
+	for key := range domainMap {
+		list = append(list, key)
+	}
+	sort.Strings(list)
+
+	_, err = outputFile.WriteString(strings.Join(list, "\n"))
+
+	return err
+}
+
+func generateGeoSite(release *github.RepositoryRelease, inputFileName string, outputFileName string) error {
+	vData, err := downloadGeoSite(release, inputFileName)
+	if err != nil {
+		return err
+	}
+
+	outputFile, err := os.Create(outputFileName)
+	if err != nil {
+		return err
+	}
+	defer outputFile.Close()
+
 	domainMap, err := parse(vData)
 	if err != nil {
 		return err
 	}
+
+	err = generateDomainList(domainMap, strings.Split(outputFileName, ".")[0]+".txt")
+	if err != nil {
+		return err
+	}
+
 	return geosite.Write(outputFile, domainMap)
 }
 
