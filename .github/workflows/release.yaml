@@ -46,6 +46,6 @@ jobs:
         if: steps.build.outputs.skip != 'true'
         uses: dev-drprasad/delete-older-releases@v0.3.2
         with:
-          keep_latest: 10
+          keep_latest: 5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
