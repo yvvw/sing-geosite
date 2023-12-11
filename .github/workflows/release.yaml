@@ -41,6 +41,7 @@ jobs:
             geosite-lite.db
             geosite-lite.db.sha256sum
             geosite-lite.txt
+            rule-set/geosite-*
 
       - name: Prune Release
         if: steps.build.outputs.skip != 'true'

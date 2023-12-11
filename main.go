@@ -4,17 +4,21 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"github.com/sagernet/sing-box/common/geosite"
+	"github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/option"
 	"io"
 	"io/fs"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/google/go-github/v45/github"
-	"github.com/sagernet/sing-box/common/geosite"
+	"github.com/sagernet/sing-box/common/srs"
 	"github.com/sagernet/sing/common"
-	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/exceptions"
 	"github.com/sirupsen/logrus"
 	"github.com/v2fly/v2ray-core/v5/app/router/routercommon"
 	"google.golang.org/protobuf/proto"
@@ -65,13 +69,13 @@ func downloadGeoSite(release *github.RepositoryRelease, fileName string) ([]byte
 		return *it.Name == fileName
 	})
 	if geositeAsset == nil {
-		return nil, E.New(fileName+" not found in upstream release ", release.Name)
+		return nil, exceptions.New(fileName+" not found in upstream release ", release.Name)
 	}
 	geositeChecksumAsset := common.Find(release.Assets, func(it *github.ReleaseAsset) bool {
 		return *it.Name == fileName+".sha256sum"
 	})
 	if geositeChecksumAsset == nil {
-		return nil, E.New(fileName+".sha256sum not found in upstream release ", release.Name)
+		return nil, exceptions.New(fileName+".sha256sum not found in upstream release ", release.Name)
 	}
 	data, err := download(geositeAsset.BrowserDownloadURL)
 	if err != nil {
@@ -83,7 +87,7 @@ func downloadGeoSite(release *github.RepositoryRelease, fileName string) ([]byte
 	}
 	checksum := sha256.Sum256(data)
 	if hex.EncodeToString(checksum[:]) != string(remoteChecksum[:64]) {
-		return nil, E.New("checksum mismatch")
+		return nil, exceptions.New("checksum mismatch")
 	}
 	return data, nil
 }
@@ -191,7 +195,7 @@ func generateDomainList(domainMap map[string][]geosite.Item, outputFileName stri
 	return err
 }
 
-func generateGeoSite(release *github.RepositoryRelease, inputFileName string, outputFileName string) error {
+func generateGeoSite(release *github.RepositoryRelease, inputFileName string, outputFileName string, ruleSetDir string) error {
 	vData, err := downloadGeoSite(release, inputFileName)
 	if err != nil {
 		return err
@@ -206,6 +210,41 @@ func generateGeoSite(release *github.RepositoryRelease, inputFileName string, ou
 	domainMap, err := parse(vData)
 	if err != nil {
 		return err
+	}
+
+	if ruleSetDir != "" {
+		_ = os.RemoveAll(ruleSetDir)
+		err = os.MkdirAll(ruleSetDir, 0o755)
+		if err != nil {
+			return err
+		}
+
+		for code, domains := range domainMap {
+			var headlessRule option.DefaultHeadlessRule
+			defaultRule := geosite.Compile(domains)
+			headlessRule.Domain = defaultRule.Domain
+			headlessRule.DomainSuffix = defaultRule.DomainSuffix
+			headlessRule.DomainKeyword = defaultRule.DomainKeyword
+			headlessRule.DomainRegex = defaultRule.DomainRegex
+			var plainRuleSet option.PlainRuleSet
+			plainRuleSet.Rules = []option.HeadlessRule{
+				{
+					Type:           constant.RuleTypeDefault,
+					DefaultOptions: headlessRule,
+				},
+			}
+			srsPath, _ := filepath.Abs(filepath.Join(ruleSetDir, "geosite-"+code+".srs"))
+			outputRuleSet, err := os.Create(srsPath)
+			if err != nil {
+				return err
+			}
+			err = srs.Write(outputRuleSet, plainRuleSet)
+			if err != nil {
+				outputRuleSet.Close()
+				return err
+			}
+			outputRuleSet.Close()
+		}
 	}
 
 	err = generateDomainList(domainMap, strings.Split(outputFileName, ".")[0]+".txt")
@@ -246,11 +285,11 @@ func main() {
 		}
 	}
 
-	err = generateGeoSite(fullSourceRelease, fullInput, fullOutput)
+	err = generateGeoSite(fullSourceRelease, fullInput, fullOutput, "rule-set")
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	err = generateGeoSite(liteSourceRelease, liteInput, liteOutput)
+	err = generateGeoSite(liteSourceRelease, liteInput, liteOutput, "")
 	if err != nil {
 		logrus.Fatal(err)
 	}
